@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package Protobufs.NetworkTanks.Game;
+
+message WrapperMessage {
+    oneof message {
+        MoveMessage moveMessage = 1;
+    }
+}
+
+message MoveMessage {
+
+    int32 playerId = 1;
+    float x = 2;
+    float y = 3;
+
+}

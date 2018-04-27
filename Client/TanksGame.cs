@@ -11,9 +11,17 @@ namespace Client
     public class TanksGame : Game
     {
         public GraphicsDeviceManager GraphicsManager { get; }
-        SpriteBatch spriteBatch;
+        private SpriteBatch _spriteBatch;
 
         private Player _player;
+
+        private KeyboardState _prevState;
+        private KeyboardState _currentState;
+
+        public bool IsKeyDownNew(Keys key)
+        {
+            return _prevState.IsKeyUp(key) && _currentState.IsKeyDown(key);
+        }
 
         public TanksGame()
         {
@@ -29,6 +37,9 @@ namespace Client
         /// </summary>
         protected override void Initialize()
         {
+            _prevState = Keyboard.GetState();
+            _currentState = Keyboard.GetState();
+
             _player = new Player(this);
 
             base.Initialize();
@@ -41,7 +52,7 @@ namespace Client
         protected override void LoadContent()
         {
             // Create a new SpriteBatch, which can be used to draw textures.
-            spriteBatch = new SpriteBatch(GraphicsDevice);
+            _spriteBatch = new SpriteBatch(GraphicsDevice);
 
             _player.LoadContent(GraphicsDevice);
         }
@@ -62,6 +73,9 @@ namespace Client
         /// <param name="gameTime">Provides a snapshot of timing values.</param>
         protected override void Update(GameTime gameTime)
         {
+            _prevState = _currentState;
+            _currentState = Keyboard.GetState();
+
             if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed || Keyboard.GetState().IsKeyDown(Keys.Escape))
                 Exit();
 
@@ -77,11 +91,11 @@ namespace Client
         protected override void Draw(GameTime gameTime)
         {
             GraphicsDevice.Clear(Color.CornflowerBlue);
-            spriteBatch.Begin();
+            _spriteBatch.Begin();
 
-            _player.Draw(spriteBatch);
+            _player.Draw(_spriteBatch);
 
-            spriteBatch.End();
+            _spriteBatch.End();
             base.Draw(gameTime);
         }
     }
