@@ -13,7 +13,7 @@ namespace Client
         public GraphicsDeviceManager GraphicsManager { get; }
         private SpriteBatch _spriteBatch;
 
-        private Player _player;
+        private LocalPlayer _localPlayer;
 
         private KeyboardState _prevState;
         private KeyboardState _currentState;
@@ -40,7 +40,7 @@ namespace Client
             _prevState = Keyboard.GetState();
             _currentState = Keyboard.GetState();
 
-            _player = new Player(this);
+            _localPlayer = new LocalPlayer(this);
 
             base.Initialize();
         }
@@ -54,7 +54,7 @@ namespace Client
             // Create a new SpriteBatch, which can be used to draw textures.
             _spriteBatch = new SpriteBatch(GraphicsDevice);
 
-            _player.LoadContent(GraphicsDevice);
+            _localPlayer.LoadContent(GraphicsDevice);
         }
 
         /// <summary>
@@ -79,7 +79,7 @@ namespace Client
             if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed || Keyboard.GetState().IsKeyDown(Keys.Escape))
                 Exit();
 
-            _player.Update(gameTime);
+            _localPlayer.Update(gameTime);
 
             base.Update(gameTime);
         }
@@ -93,7 +93,7 @@ namespace Client
             GraphicsDevice.Clear(Color.CornflowerBlue);
             _spriteBatch.Begin();
 
-            _player.Draw(_spriteBatch);
+            _localPlayer.Draw(_spriteBatch);
 
             _spriteBatch.End();
             base.Draw(gameTime);

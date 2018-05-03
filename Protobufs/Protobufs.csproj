@@ -48,10 +48,12 @@
     <Compile Include="Utils.cs" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="build.bat" />
     <None Include="packages.config" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>
-    <PreBuildEvent>$(ProjectDir)build.bat</PreBuildEvent>
+    <PreBuildEvent>CD $(ProjectDir)
+$(ProjectDir)build.bat</PreBuildEvent>
   </PropertyGroup>
 </Project>

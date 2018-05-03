@@ -5,13 +5,22 @@ package Protobufs.NetworkTanks.Game;
 message WrapperMessage {
     oneof message {
         MoveMessage moveMessage = 1;
+        ClientReadyMessage clientReadyMessage = 2;
+        ServerReadyMessage serverReadyMessage = 3;
     }
 }
 
 message MoveMessage {
-
     int32 playerId = 1;
     float x = 2;
     float y = 3;
+}
 
+message ClientReadyMessage {
+    string ip = 1;
+    int32 portNumber = 2;
+}
+
+message ServerReadyMessage {
+    int32 playerId = 1;
 }

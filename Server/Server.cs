@@ -8,22 +8,118 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Protobufs.NetworkTanks.Game;
+using ProtoBuf;
 
 namespace Server
 {
     internal class Server
     {
         private static readonly string HOST = "127.0.0.1";
-        private static readonly int PORT = 9989;
+        private static readonly int PORT = 9900;
+
+        private static readonly IPEndPoint LOCAL_ENDPOINT = new IPEndPoint(IPAddress.Parse(HOST), PORT);
+
+        private List<IPEndPoint> _clients = new List<IPEndPoint>();
+        private Dictionary<IPEndPoint, UdpClient> _senders = new Dictionary<IPEndPoint, UdpClient>();
+        //private Dictionary<IPEndPoint, UdpClient> _receivers = new Dictionary<IPEndPoint, UdpClient>();
+        private UdpClient _receiver = new UdpClient(LOCAL_ENDPOINT);
+
+        private int _playerId;
+
+        private static readonly float TICK_RATE = 30f;
+        private static readonly float TICK_TIME = 1f / TICK_RATE;
+
+        private Queue<MoveMessage> _commands = new Queue<MoveMessage>();
 
         public void Run()
         {
-            var socketSend = new UdpClient(new IPEndPoint(IPAddress.Parse(HOST), PORT));
+            Task.Run((Action)ListenForConnections);
+
+
+            while (true)
+            {
+
+            }
+        }
+
+        private void ReceiveCommands()
+        {
+            //_receiver.ReceiveAsync()
+            
+        }
+
+        private void ListenForConnections()
+        {
+            var listener = new TcpListener(IPAddress.Parse(HOST), PORT);
+            listener.Start();
+
+            while (true)
+            {
+                TcpClient client = listener.AcceptTcpClient();
+                Console.WriteLine("New client connected!");
+                Task.Run(() => HandleClient(client));
+            }
+        }
+
+        private void HandleClient(TcpClient client)
+        {
+            NetworkStream stream = client.GetStream();
+            byte[] message = ReadMessage(stream);
+
+            // Receive player ready
+            WrapperMessage wm = WrapperMessage.Parser.ParseFrom(message);
+            if (wm.MessageCase != WrapperMessage.MessageOneofCase.ClientReadyMessage)
+            {
+                Console.WriteLine("--- Invalid protocol");
+                return;
+            }
+
+            int port = wm.ClientReadyMessage.PortNumber;
+            string ip = wm.ClientReadyMessage.Ip;
+            var endpoint = new IPEndPoint(IPAddress.Parse(ip), port);
+            lock (_clients)
+            {
+                _clients.Add(endpoint);
+            }
+
+            var sender = new UdpClient();
+            sender.Connect(endpoint);
+            lock (_senders)
+            {
+                _senders.Add(endpoint, sender);
+            }
+
+            
+            // Send player info
+            var srm = new ServerReadyMessage
+            {
+                PlayerId = Interlocked.Increment(ref _playerId)
+            };
+            var wrapper = new WrapperMessage {ServerReadyMessage = srm};
+            stream.Write(Protobufs.Utils.GetBinaryData(wrapper), 0, wrapper.CalculateSize());
+        }
+
+        private static byte[] ReadMessage(Stream stream)
+        {
+            var message = new List<byte>();
+            var data = new byte[256];
+
+            while (stream.Read(data, 0, data.Length) > 0)
+            {
+                message.AddRange(data);
+            }
+
+            return message.ToArray();
+        }
+
+        private void OldRun()
+        {
+            var socketReceive = new UdpClient(new IPEndPoint(IPAddress.Parse(HOST), PORT));
 
             Task.Run(() =>
             {
-                var socketReceive = new UdpClient();
-                socketReceive.Connect(new IPEndPoint(IPAddress.Parse(HOST), 9988));
+                var socketSend = new UdpClient();
+                socketSend.Connect(new IPEndPoint(IPAddress.Parse(HOST), 9988));
                 while (true)
                 {
                     try
@@ -40,7 +136,7 @@ namespace Server
                         {
                             MoveMessage = moveMessage
                         };
-                        socketReceive.Send(Protobufs.Utils.GetBinaryData(wm), wm.CalculateSize());
+                        socketSend.Send(Protobufs.Utils.GetBinaryData(wm), wm.CalculateSize());
                         Console.WriteLine("Move sent");
                     }
                     catch (Exception e)
@@ -55,7 +151,7 @@ namespace Server
 
             while (true)
             {
-                var msg = socketSend.ReceiveAsync();
+                var msg = socketReceive.ReceiveAsync();
 
                 WrapperMessage wm = WrapperMessage.Parser.ParseFrom(msg.Result.Buffer);
                 if (wm.MessageCase == WrapperMessage.MessageOneofCase.MoveMessage)

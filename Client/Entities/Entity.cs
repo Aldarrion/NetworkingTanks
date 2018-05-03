@@ -8,7 +8,7 @@ using Microsoft.Xna.Framework.Graphics;
 
 namespace Client.Entities
 {
-    internal abstract class Entity
+    public abstract class Entity
     {
         protected TanksGame Game { get; }
 
