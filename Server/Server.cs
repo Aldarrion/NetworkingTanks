@@ -9,6 +9,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Protobufs.NetworkTanks.Game;
 using ProtoBuf;
+using Lidgren.Network;
+using NetworkUtils;
 
 namespace Server
 {
@@ -36,6 +38,7 @@ namespace Server
             Task.Run((Action)ListenForConnections);
 
 
+
             while (true)
             {
 
@@ -52,6 +55,7 @@ namespace Server
         {
             var listener = new TcpListener(IPAddress.Parse(HOST), PORT);
             listener.Start();
+            Console.WriteLine("Listening for connections...");
 
             while (true)
             {
@@ -63,53 +67,51 @@ namespace Server
 
         private void HandleClient(TcpClient client)
         {
-            NetworkStream stream = client.GetStream();
-            byte[] message = ReadMessage(stream);
-
-            // Receive player ready
-            WrapperMessage wm = WrapperMessage.Parser.ParseFrom(message);
-            if (wm.MessageCase != WrapperMessage.MessageOneofCase.ClientReadyMessage)
+            try
             {
-                Console.WriteLine("--- Invalid protocol");
-                return;
+                Console.WriteLine("  Waiting for client ready...");
+                NetworkStream stream = client.GetStream();
+                byte[] message = Utils.ReadMessage(stream, client.ReceiveBufferSize);
+
+                // Receive player ready
+                WrapperMessage wm = WrapperMessage.Parser.ParseFrom(message);
+                if (wm.MessageCase != WrapperMessage.MessageOneofCase.ClientReadyMessage)
+                {
+                    Console.WriteLine("--- Invalid protocol");
+                    return;
+                }
+
+                Console.WriteLine("  Client ready");
+
+                int port = wm.ClientReadyMessage.PortNumber;
+                string ip = wm.ClientReadyMessage.Ip;
+                var endpoint = new IPEndPoint(IPAddress.Parse(ip), port);
+                lock (_clients)
+                {
+                    _clients.Add(endpoint);
+                }
+
+                var sender = new UdpClient();
+                sender.Connect(endpoint);
+                lock (_senders)
+                {
+                    _senders[endpoint] = sender;
+                }
+
+                // Send player info
+                var srm = new ServerReadyMessage
+                {
+                    PlayerId = Interlocked.Increment(ref _playerId)
+                };
+                var wrapper = new WrapperMessage {ServerReadyMessage = srm};
+                stream.Write(Protobufs.Utils.GetBinaryData(wrapper), 0, wrapper.CalculateSize());
+                Console.WriteLine($"  Added player with ID: {srm.PlayerId}");
             }
-
-            int port = wm.ClientReadyMessage.PortNumber;
-            string ip = wm.ClientReadyMessage.Ip;
-            var endpoint = new IPEndPoint(IPAddress.Parse(ip), port);
-            lock (_clients)
+            catch (Exception e)
             {
-                _clients.Add(endpoint);
+                Console.WriteLine(e.Message);
+                Console.WriteLine(e.StackTrace);
             }
-
-            var sender = new UdpClient();
-            sender.Connect(endpoint);
-            lock (_senders)
-            {
-                _senders.Add(endpoint, sender);
-            }
-
-            
-            // Send player info
-            var srm = new ServerReadyMessage
-            {
-                PlayerId = Interlocked.Increment(ref _playerId)
-            };
-            var wrapper = new WrapperMessage {ServerReadyMessage = srm};
-            stream.Write(Protobufs.Utils.GetBinaryData(wrapper), 0, wrapper.CalculateSize());
-        }
-
-        private static byte[] ReadMessage(Stream stream)
-        {
-            var message = new List<byte>();
-            var data = new byte[256];
-
-            while (stream.Read(data, 0, data.Length) > 0)
-            {
-                message.AddRange(data);
-            }
-
-            return message.ToArray();
         }
 
         private void OldRun()

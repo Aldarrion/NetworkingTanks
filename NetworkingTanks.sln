@@ -13,6 +13,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestClient", "TestClient\Te
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Protobufs", "Protobufs\Protobufs.csproj", "{B6B3B21D-3A2A-440C-8621-A5B79557248B}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetworkUtils", "NetworkUtils\NetworkUtils.csproj", "{A587280C-3501-457C-88B6-141FDF8435B4}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -39,6 +41,10 @@ Global
 		{B6B3B21D-3A2A-440C-8621-A5B79557248B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B6B3B21D-3A2A-440C-8621-A5B79557248B}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B6B3B21D-3A2A-440C-8621-A5B79557248B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A587280C-3501-457C-88B6-141FDF8435B4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A587280C-3501-457C-88B6-141FDF8435B4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A587280C-3501-457C-88B6-141FDF8435B4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A587280C-3501-457C-88B6-141FDF8435B4}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
