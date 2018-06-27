@@ -76,8 +76,12 @@ namespace Client
             _prevState = _currentState;
             _currentState = Keyboard.GetState();
 
-            if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed || Keyboard.GetState().IsKeyDown(Keys.Escape))
+            if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed ||
+                Keyboard.GetState().IsKeyDown(Keys.Escape))
+            {
+                _localPlayer.Destroy();
                 Exit();
+            }
 
             _localPlayer.Update(gameTime);
 

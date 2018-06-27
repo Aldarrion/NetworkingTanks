@@ -17,14 +17,18 @@ namespace Server
     internal class Server
     {
         private static readonly string HOST = "127.0.0.1";
-        private static readonly int PORT = 9900;
+        private static readonly int PORT = 14241;
+        private static readonly string CONNECTION_NAME = "TanksNetworking";
 
         private static readonly IPEndPoint LOCAL_ENDPOINT = new IPEndPoint(IPAddress.Parse(HOST), PORT);
 
-        private List<IPEndPoint> _clients = new List<IPEndPoint>();
-        private Dictionary<IPEndPoint, UdpClient> _senders = new Dictionary<IPEndPoint, UdpClient>();
+        //private List<IPEndPoint> _clients = new List<IPEndPoint>();
+        //private Dictionary<IPEndPoint, UdpClient> _senders = new Dictionary<IPEndPoint, UdpClient>();
         //private Dictionary<IPEndPoint, UdpClient> _receivers = new Dictionary<IPEndPoint, UdpClient>();
-        private UdpClient _receiver = new UdpClient(LOCAL_ENDPOINT);
+        //private UdpClient _receiver = new UdpClient(LOCAL_ENDPOINT);
+
+        private NetServer _server;
+        private List<NetConnection> _clients = new List<NetConnection>();
 
         private int _playerId;
 
@@ -37,11 +41,29 @@ namespace Server
         {
             Task.Run((Action)ListenForConnections);
 
-
-
             while (true)
             {
+                Thread.Sleep(2000);
+                foreach (NetConnection client in _clients)
+                {
+                    Console.WriteLine("Sending move");
+                    var moveMessage = new MoveMessage
+                    {
+                        PlayerId = 1,
+                        X = 10,
+                        Y = 10
+                    };
+                    var wm = new WrapperMessage
+                    {
+                        MoveMessage = moveMessage
+                    };
+                    NetOutgoingMessage msg = _server.CreateMessage();
+                    msg.Write(wm.CalculateSize());
+                    msg.Write(Protobufs.Utils.GetBinaryData(wm));
 
+                    _server.SendMessage(msg, client, NetDeliveryMethod.Unreliable);
+                    Console.WriteLine("Move sent");
+                }
             }
         }
 
@@ -53,65 +75,120 @@ namespace Server
 
         private void ListenForConnections()
         {
-            var listener = new TcpListener(IPAddress.Parse(HOST), PORT);
-            listener.Start();
-            Console.WriteLine("Listening for connections...");
-
-            while (true)
-            {
-                TcpClient client = listener.AcceptTcpClient();
-                Console.WriteLine("New client connected!");
-                Task.Run(() => HandleClient(client));
-            }
-        }
-
-        private void HandleClient(TcpClient client)
-        {
             try
             {
-                Console.WriteLine("  Waiting for client ready...");
-                NetworkStream stream = client.GetStream();
-                byte[] message = Utils.ReadMessage(stream, client.ReceiveBufferSize);
-
-                // Receive player ready
-                WrapperMessage wm = WrapperMessage.Parser.ParseFrom(message);
-                if (wm.MessageCase != WrapperMessage.MessageOneofCase.ClientReadyMessage)
+                var config = new NetPeerConfiguration(CONNECTION_NAME)
                 {
-                    Console.WriteLine("--- Invalid protocol");
-                    return;
-                }
-
-                Console.WriteLine("  Client ready");
-
-                int port = wm.ClientReadyMessage.PortNumber;
-                string ip = wm.ClientReadyMessage.Ip;
-                var endpoint = new IPEndPoint(IPAddress.Parse(ip), port);
-                lock (_clients)
-                {
-                    _clients.Add(endpoint);
-                }
-
-                var sender = new UdpClient();
-                sender.Connect(endpoint);
-                lock (_senders)
-                {
-                    _senders[endpoint] = sender;
-                }
-
-                // Send player info
-                var srm = new ServerReadyMessage
-                {
-                    PlayerId = Interlocked.Increment(ref _playerId)
+                    Port = PORT
                 };
-                var wrapper = new WrapperMessage {ServerReadyMessage = srm};
-                stream.Write(Protobufs.Utils.GetBinaryData(wrapper), 0, wrapper.CalculateSize());
-                Console.WriteLine($"  Added player with ID: {srm.PlayerId}");
+                config.EnableMessageType(NetIncomingMessageType.ConnectionApproval);
+
+                _server = new NetServer(config);
+                _server.Start();
+
+                if (_server.Status == NetPeerStatus.Running)
+                {
+                    Console.WriteLine("Server is running on port " + config.Port);
+                }
+                else
+                {
+                    Console.WriteLine("Server not started...");
+                }
+
+                Console.WriteLine("Listening for connections");
+                while (true)
+                {
+                    NetIncomingMessage msg;
+                    if ((msg = _server.ReadMessage()) == null)
+                    {
+                        continue;
+                    }
+
+                    Console.WriteLine($"Message received: {msg.MessageType}");
+                    switch (msg.MessageType)
+                    {
+                        case NetIncomingMessageType.VerboseDebugMessage:
+                        case NetIncomingMessageType.DebugMessage:
+                        case NetIncomingMessageType.WarningMessage:
+                        case NetIncomingMessageType.ErrorMessage:
+                            Console.WriteLine($"  {msg.ReadString()}");
+                            break;
+                        case NetIncomingMessageType.Error:
+                            break;
+                        case NetIncomingMessageType.StatusChanged:
+                        {
+                            Console.WriteLine($"  {msg.SenderConnection.Status}");
+                            if (msg.SenderConnection.Status == NetConnectionStatus.Disconnected)
+                            {
+                                _clients.Remove(msg.SenderConnection);
+                            }
+                            break;
+                        }
+                        case NetIncomingMessageType.UnconnectedData:
+                            break;
+                        case NetIncomingMessageType.ConnectionApproval:
+                        {
+                            // Send player info
+                            var srm = new ServerReadyMessage
+                            {
+                                PlayerId = Interlocked.Increment(ref _playerId)
+                            };
+                            var wrapper = new WrapperMessage {ServerReadyMessage = srm};
+                            NetOutgoingMessage playerInfoMsg = _server.CreateMessage();
+                            playerInfoMsg.Write(wrapper.CalculateSize());
+                            playerInfoMsg.Write(Protobufs.Utils.GetBinaryData(wrapper));
+                            Console.WriteLine($"  Added player with ID: {srm.PlayerId}");
+
+                            msg.SenderConnection.Approve(playerInfoMsg);
+                            lock (_clients)
+                            {
+                                _clients.Add(msg.SenderConnection);
+                            }
+
+                            break;
+                        }
+                        case NetIncomingMessageType.Data:
+                            Console.WriteLine($"  Received data message");
+                            int size = msg.ReadInt32();
+                            byte[] protoMsg = msg.ReadBytes(size);
+
+                            break;
+                        case NetIncomingMessageType.Receipt:
+                            break;
+                        case NetIncomingMessageType.DiscoveryRequest:
+                            break;
+                        case NetIncomingMessageType.DiscoveryResponse:
+                            break;
+                        case NetIncomingMessageType.NatIntroductionSuccess:
+                            break;
+                        case NetIncomingMessageType.ConnectionLatencyUpdated:
+                            break;
+                        default:
+                            Console.WriteLine("  Unhandled type: " + msg.MessageType);
+                            break;
+                    }
+
+                    _server.Recycle(msg);
+                }
+
+                Console.WriteLine("Server quitting");
             }
             catch (Exception e)
             {
                 Console.WriteLine(e.Message);
                 Console.WriteLine(e.StackTrace);
             }
+
+            //var listener = new TcpListener(IPAddress.Parse(HOST), PORT);
+            //listener.Start();
+            //Console.WriteLine("Listening for connections...");
+
+            //while (true)
+            //{
+            //    TcpClient client = listener.AcceptTcpClient();
+            //    Console.WriteLine("New client connected!");
+            //    Task.Run(() => HandleClient(client));
+            //}
         }
 
         private void OldRun()
