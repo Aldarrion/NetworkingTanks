@@ -10,14 +10,13 @@ namespace Client.Entities
 {
     public class RemotePlayer : Player
     {
-        protected UdpClient _receiveSocket;
-        public RemotePlayer(TanksGame game) : base(game)
+        public RemotePlayer(TanksGame game, int playerId) 
+            : base(game, playerId)
         {
         }
 
         public override void Update(GameTime time)
         {
-            throw new NotImplementedException();
         }
     }
 }

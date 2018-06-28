@@ -53,6 +53,8 @@
     <Compile Include="Entities\LocalPlayer.cs" />
     <Compile Include="Entities\Player.cs" />
     <Compile Include="Entities\RemotePlayer.cs" />
+    <Compile Include="Extensions\PositionExtensions.cs" />
+    <Compile Include="Managers\NetworkManager.cs" />
     <Compile Include="TanksGame.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
@@ -131,10 +133,6 @@
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\NetworkUtils\NetworkUtils.csproj">
-      <Project>{a587280c-3501-457c-88b6-141fdf8435b4}</Project>
-      <Name>NetworkUtils</Name>
-    </ProjectReference>
     <ProjectReference Include="..\Protobufs\Protobufs.csproj">
       <Project>{b6b3b21d-3a2a-440c-8621-a5b79557248b}</Project>
       <Name>Protobufs</Name>

@@ -1,7 +1,11 @@
-﻿using Client.Entities;
+﻿using System.Collections.Generic;
+using Client.Entities;
+using Client.Extensions;
+using Client.Managers;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
+using Protobufs.NetworkTanks.Game;
 
 namespace Client
 {
@@ -14,9 +18,12 @@ namespace Client
         private SpriteBatch _spriteBatch;
 
         private LocalPlayer _localPlayer;
+        private Dictionary<int, RemotePlayer> _remotePlayers = new Dictionary<int, RemotePlayer>();
 
         private KeyboardState _prevState;
         private KeyboardState _currentState;
+
+        private NetworkManager _networkManager;
 
         public bool IsKeyDownNew(Keys key)
         {
@@ -25,30 +32,26 @@ namespace Client
 
         public TanksGame()
         {
+            IsMouseVisible = true;
             GraphicsManager = new GraphicsDeviceManager(this);
             Content.RootDirectory = "Content";
         }
 
-        /// <summary>
-        /// Allows the game to perform any initialization it needs to before starting to run.
-        /// This is where it can query for any required services and load any non-graphic
-        /// related content.  Calling base.Initialize will enumerate through any components
-        /// and initialize them as well.
-        /// </summary>
         protected override void Initialize()
         {
             _prevState = Keyboard.GetState();
             _currentState = Keyboard.GetState();
 
-            _localPlayer = new LocalPlayer(this);
+            _networkManager = new NetworkManager();
+            _networkManager.OnNewPlayerConnected += NewPlayerConnected;
+            _networkManager.Connect();
+
+            _localPlayer = new LocalPlayer(this, _networkManager.LocalPlayerId);
+            _localPlayer.MoveTo(_networkManager.LocalPlayerPosition);
 
             base.Initialize();
         }
 
-        /// <summary>
-        /// LoadContent will be called once per game and is the place to load
-        /// all of your content.
-        /// </summary>
         protected override void LoadContent()
         {
             // Create a new SpriteBatch, which can be used to draw textures.
@@ -57,20 +60,10 @@ namespace Client
             _localPlayer.LoadContent(GraphicsDevice);
         }
 
-        /// <summary>
-        /// UnloadContent will be called once per game and is the place to unload
-        /// game-specific content.
-        /// </summary>
         protected override void UnloadContent()
         {
-            // TODO: Unload any non ContentManager content here
         }
 
-        /// <summary>
-        /// Allows the game to run logic such as updating the world,
-        /// checking for collisions, gathering input, and playing audio.
-        /// </summary>
-        /// <param name="gameTime">Provides a snapshot of timing values.</param>
         protected override void Update(GameTime gameTime)
         {
             _prevState = _currentState;
@@ -79,19 +72,20 @@ namespace Client
             if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed ||
                 Keyboard.GetState().IsKeyDown(Keys.Escape))
             {
-                _localPlayer.Destroy();
+                _networkManager.Destroy();
                 Exit();
             }
 
             _localPlayer.Update(gameTime);
 
+            foreach (RemotePlayer remotePlayer in _remotePlayers.Values)
+            {
+                remotePlayer.Update(gameTime);
+            }
+
             base.Update(gameTime);
         }
 
-        /// <summary>
-        /// This is called when the game should draw itself.
-        /// </summary>
-        /// <param name="gameTime">Provides a snapshot of timing values.</param>
         protected override void Draw(GameTime gameTime)
         {
             GraphicsDevice.Clear(Color.CornflowerBlue);
@@ -99,8 +93,25 @@ namespace Client
 
             _localPlayer.Draw(_spriteBatch);
 
+            foreach (RemotePlayer remotePlayer in _remotePlayers.Values)
+            {
+                remotePlayer.Draw(_spriteBatch);
+            }
+
             _spriteBatch.End();
             base.Draw(gameTime);
+        }
+
+        private void NewPlayerConnected(PlayerInfo newPlayerInfo)
+        {
+            var newPlayer = new RemotePlayer(this, newPlayerInfo.Id);
+            newPlayer.LoadContent(GraphicsDevice);
+            newPlayer.MoveTo(newPlayerInfo.Position.ToVector());
+
+            lock (_remotePlayers)
+            {
+                _remotePlayers.Add(newPlayer.PlayerId, newPlayer);
+            }
         }
     }
 }

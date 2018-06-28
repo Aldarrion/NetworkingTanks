@@ -16,14 +16,16 @@ namespace Client.Entities
         private Texture2D _square;
         public float Speed { get; }
         protected Vector2 _position;
+        public int PlayerId { get; private set; }
 
-        protected Player(TanksGame game) 
+        protected Player(TanksGame game, int playerId)
             : base(game)
         {
             Speed = 128.0f;
             int x = Game.GraphicsManager.PreferredBackBufferWidth / 2;
             int y = Game.GraphicsManager.PreferredBackBufferHeight / 2;
             _position = new Vector2(x, y);
+            PlayerId = playerId;
         }
 
         public virtual void LoadContent(GraphicsDevice device)

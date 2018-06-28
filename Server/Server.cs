@@ -10,7 +10,6 @@ using System.Threading.Tasks;
 using Protobufs.NetworkTanks.Game;
 using ProtoBuf;
 using Lidgren.Network;
-using NetworkUtils;
 
 namespace Server
 {
@@ -19,16 +18,11 @@ namespace Server
         private static readonly string HOST = "127.0.0.1";
         private static readonly int PORT = 14241;
         private static readonly string CONNECTION_NAME = "TanksNetworking";
-
-        private static readonly IPEndPoint LOCAL_ENDPOINT = new IPEndPoint(IPAddress.Parse(HOST), PORT);
-
-        //private List<IPEndPoint> _clients = new List<IPEndPoint>();
-        //private Dictionary<IPEndPoint, UdpClient> _senders = new Dictionary<IPEndPoint, UdpClient>();
-        //private Dictionary<IPEndPoint, UdpClient> _receivers = new Dictionary<IPEndPoint, UdpClient>();
-        //private UdpClient _receiver = new UdpClient(LOCAL_ENDPOINT);
+        private static readonly int DEFAULT_SEQUENCE_CHANNEL = 0;
 
         private NetServer _server;
-        private List<NetConnection> _clients = new List<NetConnection>();
+        private Dictionary<NetConnection, int> _clients = new Dictionary<NetConnection, int>();
+        private Dictionary<int, PlayerInfo> _players = new Dictionary<int, PlayerInfo>();
 
         private int _playerId;
 
@@ -37,21 +31,24 @@ namespace Server
 
         private Queue<MoveMessage> _commands = new Queue<MoveMessage>();
 
+        private Random _rnd = new Random(42);
+
         public void Run()
         {
-            Task.Run((Action)ListenForConnections);
+            InitServer();
+            Task.Run((Action)ProcessMessages);
 
             while (true)
             {
+                continue;
                 Thread.Sleep(2000);
-                foreach (NetConnection client in _clients)
+                foreach (NetConnection client in _clients.Keys)
                 {
                     Console.WriteLine("Sending move");
                     var moveMessage = new MoveMessage
                     {
                         PlayerId = 1,
-                        X = 10,
-                        Y = 10
+                        Position = new Position { X = 10, Y = 10 }
                     };
                     var wm = new WrapperMessage
                     {
@@ -70,31 +67,33 @@ namespace Server
         private void ReceiveCommands()
         {
             //_receiver.ReceiveAsync()
-            
         }
 
-        private void ListenForConnections()
+        private void InitServer()
+        {
+            var config = new NetPeerConfiguration(CONNECTION_NAME)
+            {
+                Port = PORT
+            };
+            config.EnableMessageType(NetIncomingMessageType.ConnectionApproval);
+
+            _server = new NetServer(config);
+            _server.Start();
+
+            if (_server.Status == NetPeerStatus.Running)
+            {
+                Console.WriteLine("Server is running on port " + config.Port);
+            }
+            else
+            {
+                throw new Exception("Server not started...");
+            }
+        }
+
+        private void ProcessMessages()
         {
             try
             {
-                var config = new NetPeerConfiguration(CONNECTION_NAME)
-                {
-                    Port = PORT
-                };
-                config.EnableMessageType(NetIncomingMessageType.ConnectionApproval);
-
-                _server = new NetServer(config);
-                _server.Start();
-
-                if (_server.Status == NetPeerStatus.Running)
-                {
-                    Console.WriteLine("Server is running on port " + config.Port);
-                }
-                else
-                {
-                    Console.WriteLine("Server not started...");
-                }
-
                 Console.WriteLine("Listening for connections");
                 while (true)
                 {
@@ -104,7 +103,7 @@ namespace Server
                         continue;
                     }
 
-                    Console.WriteLine($"Message received: {msg.MessageType}");
+                    Console.WriteLine($"{msg.MessageType}");
                     switch (msg.MessageType)
                     {
                         case NetIncomingMessageType.VerboseDebugMessage:
@@ -120,7 +119,7 @@ namespace Server
                             Console.WriteLine($"  {msg.SenderConnection.Status}");
                             if (msg.SenderConnection.Status == NetConnectionStatus.Disconnected)
                             {
-                                _clients.Remove(msg.SenderConnection);
+                                PlayerDisconencted(msg);
                             }
                             break;
                         }
@@ -128,21 +127,51 @@ namespace Server
                             break;
                         case NetIncomingMessageType.ConnectionApproval:
                         {
+                            int newPlayerId = Interlocked.Increment(ref _playerId);
+                            var newPlayerPosition = new Position {X = _rnd.Next(500), Y = _rnd.Next(500)};
+                            var newPlayerInfo = new PlayerInfo {Id = newPlayerId, Position = newPlayerPosition};
                             // Send player info
-                            var srm = new ServerReadyMessage
+                            var playerSpawnMsg = new PlayerSpawnMessage
                             {
-                                PlayerId = Interlocked.Increment(ref _playerId)
+                                NewPlayer = newPlayerInfo,
+                                OtherPlayers = { _players.Values }
                             };
-                            var wrapper = new WrapperMessage {ServerReadyMessage = srm};
+                            var wrapper = new WrapperMessage {PlayerSpawnMessage = playerSpawnMsg};
                             NetOutgoingMessage playerInfoMsg = _server.CreateMessage();
                             playerInfoMsg.Write(wrapper.CalculateSize());
                             playerInfoMsg.Write(Protobufs.Utils.GetBinaryData(wrapper));
-                            Console.WriteLine($"  Added player with ID: {srm.PlayerId}");
-
                             msg.SenderConnection.Approve(playerInfoMsg);
+
+                            Console.WriteLine($"  Added player with ID: {newPlayerId}");
+
+                            // Send info about new player to other players
                             lock (_clients)
                             {
-                                _clients.Add(msg.SenderConnection);
+                                if (_clients.Count > 0)
+                                {
+                                    var newPlayerMsg = new NewPlayerMessage
+                                    {
+                                        PlayerInfo = new PlayerInfo {Id = newPlayerId, Position = newPlayerPosition}
+                                    };
+                                    var clientWrapper = new WrapperMessage {NewPlayerMessage = newPlayerMsg};
+                                    NetOutgoingMessage clientMsg = _server.CreateMessage();
+                                    clientMsg.Write(clientWrapper.CalculateSize());
+                                    clientMsg.Write(Protobufs.Utils.GetBinaryData(clientWrapper));
+
+                                    _server.SendMessage(
+                                        clientMsg,
+                                        _clients.Keys.ToList(),
+                                        NetDeliveryMethod.ReliableOrdered,
+                                        DEFAULT_SEQUENCE_CHANNEL
+                                    );
+                                }
+                            }
+
+                            // Add new player to database
+                            lock (_clients)
+                            {
+                                _clients.Add(msg.SenderConnection, newPlayerId);
+                                _players.Add(newPlayerId, newPlayerInfo);
                             }
 
                             break;
@@ -191,55 +220,67 @@ namespace Server
             //}
         }
 
-        private void OldRun()
+        private void PlayerDisconencted(NetIncomingMessage msg)
         {
-            var socketReceive = new UdpClient(new IPEndPoint(IPAddress.Parse(HOST), PORT));
-
-            Task.Run(() =>
+            lock (_clients) // TODO solve lock on players too
             {
-                var socketSend = new UdpClient();
-                socketSend.Connect(new IPEndPoint(IPAddress.Parse(HOST), 9988));
-                while (true)
+                if (_clients.TryGetValue(msg.SenderConnection, out int id))
                 {
-                    try
-                    {
-                        Thread.Sleep(3000);
-                        Console.WriteLine("Sending move");
-                        var moveMessage = new MoveMessage
-                        {
-                            PlayerId = 1,
-                            X = 10,
-                            Y = 10
-                        };
-                        var wm = new WrapperMessage
-                        {
-                            MoveMessage = moveMessage
-                        };
-                        socketSend.Send(Protobufs.Utils.GetBinaryData(wm), wm.CalculateSize());
-                        Console.WriteLine("Move sent");
-                    }
-                    catch (Exception e)
-                    {
-                        Console.WriteLine(e.Message);
-                        Console.WriteLine(e.StackTrace);
-                    }
-                }
-            });
-
-            Console.WriteLine("Server running");
-
-            while (true)
-            {
-                var msg = socketReceive.ReceiveAsync();
-
-                WrapperMessage wm = WrapperMessage.Parser.ParseFrom(msg.Result.Buffer);
-                if (wm.MessageCase == WrapperMessage.MessageOneofCase.MoveMessage)
-                {
-                    MoveMessage moveMsg = wm.MoveMessage;
-                    Console.WriteLine($"Move recieved. Player: {moveMsg.PlayerId}, X: {moveMsg.X}, Y: {moveMsg.Y}");
+                    _clients.Remove(msg.SenderConnection);
+                    _players.Remove(id);
                 }
             }
         }
+
+        //private void OldRun()
+        //{
+        //    var socketReceive = new UdpClient(new IPEndPoint(IPAddress.Parse(HOST), PORT));
+
+        //    Task.Run(() =>
+        //    {
+        //        var socketSend = new UdpClient();
+        //        socketSend.Connect(new IPEndPoint(IPAddress.Parse(HOST), 9988));
+        //        while (true)
+        //        {
+        //            try
+        //            {
+        //                Thread.Sleep(3000);
+        //                Console.WriteLine("Sending move");
+        //                var moveMessage = new MoveMessage
+        //                {
+        //                    PlayerId = 1,
+        //                    X = 10,
+        //                    Y = 10
+        //                };
+        //                var wm = new WrapperMessage
+        //                {
+        //                    MoveMessage = moveMessage
+        //                };
+        //                socketSend.Send(Protobufs.Utils.GetBinaryData(wm), wm.CalculateSize());
+        //                Console.WriteLine("Move sent");
+        //            }
+        //            catch (Exception e)
+        //            {
+        //                Console.WriteLine(e.Message);
+        //                Console.WriteLine(e.StackTrace);
+        //            }
+        //        }
+        //    });
+
+        //    Console.WriteLine("Server running");
+
+        //    while (true)
+        //    {
+        //        var msg = socketReceive.ReceiveAsync();
+
+        //        WrapperMessage wm = WrapperMessage.Parser.ParseFrom(msg.Result.Buffer);
+        //        if (wm.MessageCase == WrapperMessage.MessageOneofCase.MoveMessage)
+        //        {
+        //            MoveMessage moveMsg = wm.MoveMessage;
+        //            Console.WriteLine($"Move recieved. Player: {moveMsg.PlayerId}, X: {moveMsg.X}, Y: {moveMsg.Y}");
+        //        }
+        //    }
+        //}
 
         //public void Run()
         //{
