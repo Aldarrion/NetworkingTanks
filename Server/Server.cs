@@ -15,7 +15,7 @@ namespace Server
 {
     internal class Server
     {
-        private static readonly string HOST = "127.0.0.1";
+        //private static readonly string HOST = "127.0.0.1";
         private static readonly int PORT = 14241;
         private static readonly string CONNECTION_NAME = "TanksNetworking";
         private static readonly int DEFAULT_SEQUENCE_CHANNEL = 0;
@@ -228,6 +228,21 @@ namespace Server
                 {
                     _clients.Remove(msg.SenderConnection);
                     _players.Remove(id);
+
+                    if (_clients.Count > 0)
+                    {
+                        var disconnectMsg = new PlayerDisconnectMessage {Id = id};
+                        var wrapper = new WrapperMessage {PlayerDisconnectMessage = disconnectMsg};
+                        NetOutgoingMessage outMessage = _server.CreateMessage();
+                        outMessage.Write(wrapper.CalculateSize());
+                        outMessage.Write(Protobufs.Utils.GetBinaryData(wrapper));
+                        _server.SendMessage(
+                            outMessage, 
+                            _clients.Keys.ToList(), 
+                            NetDeliveryMethod.ReliableOrdered,
+                            DEFAULT_SEQUENCE_CHANNEL
+                        );
+                    }
                 }
             }
         }

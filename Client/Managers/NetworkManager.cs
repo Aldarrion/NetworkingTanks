@@ -19,6 +19,7 @@ namespace Client.Managers
         public Vector2 LocalPlayerPosition { get; private set; }
 
         public event Action<PlayerInfo> OnNewPlayerConnected;
+        public event Action<int> OnPlayerDisconnected;
 
         public NetworkManager()
         {
@@ -91,7 +92,7 @@ namespace Client.Managers
 
         public void ReceiveMessage(object peer)
         {
-            var netClient = (NetClient)peer;
+            var netClient = (NetClient) peer;
             NetIncomingMessage msg = netClient.ReadMessage();
 
             Console.WriteLine($"Message received: {msg.MessageType}");
@@ -106,25 +107,8 @@ namespace Client.Managers
                 case NetIncomingMessageType.ConnectionApproval:
                     break;
                 case NetIncomingMessageType.Data:
-                    {
-                        int size = msg.ReadInt32();
-                        byte[] protoMsg = msg.ReadBytes(size);
-                        var wm = WrapperMessage.Parser.ParseFrom(protoMsg);
-
-                        if (wm.MessageCase == WrapperMessage.MessageOneofCase.MoveMessage)
-                        {
-                            MoveMessage move = wm.MoveMessage;
-                            lock (this)
-                            {
-                                //_position = new Vector2(move.Position.X, move.Position.Y);
-                            }
-                        }
-                        else if (wm.MessageCase == WrapperMessage.MessageOneofCase.NewPlayerMessage)
-                        {
-                            OnNewPlayerConnected?.Invoke(wm.NewPlayerMessage.PlayerInfo);
-                        }
-                        break;
-                    }
+                    HanldeDataMessage(msg);
+                    break;
                 case NetIncomingMessageType.Receipt:
                     break;
                 case NetIncomingMessageType.DiscoveryRequest:
@@ -143,6 +127,39 @@ namespace Client.Managers
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();
+            }
+        }
+
+        private void HanldeDataMessage(NetIncomingMessage msg)
+        {
+            int size = msg.ReadInt32();
+            byte[] protoMsg = msg.ReadBytes(size);
+            var wrapperMessage = WrapperMessage.Parser.ParseFrom(protoMsg);
+
+            switch (wrapperMessage.MessageCase)
+            {
+                case WrapperMessage.MessageOneofCase.None:
+                    break;
+                case WrapperMessage.MessageOneofCase.MoveMessage:
+                {
+                    MoveMessage move = wrapperMessage.MoveMessage;
+                    lock (this)
+                    {
+                        //_position = new Vector2(move.Position.X, move.Position.Y);
+                    }
+
+                    break;
+                }
+                case WrapperMessage.MessageOneofCase.PlayerSpawnMessage:
+                    break;
+                case WrapperMessage.MessageOneofCase.NewPlayerMessage:
+                    OnNewPlayerConnected?.Invoke(wrapperMessage.NewPlayerMessage.PlayerInfo);
+                    break;
+                case WrapperMessage.MessageOneofCase.PlayerDisconnectMessage:
+                    OnPlayerDisconnected?.Invoke(wrapperMessage.PlayerDisconnectMessage.Id);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(wrapperMessage.MessageCase));
             }
         }
 

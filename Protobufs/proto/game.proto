@@ -7,6 +7,7 @@ message WrapperMessage {
         MoveMessage moveMessage = 1;
         PlayerSpawnMessage playerSpawnMessage = 2;
         NewPlayerMessage newPlayerMessage = 3;
+        PlayerDisconnectMessage playerDisconnectMessage = 4;
     }
 }
 
@@ -32,4 +33,8 @@ message PlayerSpawnMessage {
 
 message NewPlayerMessage {
     PlayerInfo playerInfo = 1;
+}
+
+message PlayerDisconnectMessage {
+    int32 id = 1;
 }

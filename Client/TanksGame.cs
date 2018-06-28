@@ -18,7 +18,7 @@ namespace Client
         private SpriteBatch _spriteBatch;
 
         private LocalPlayer _localPlayer;
-        private Dictionary<int, RemotePlayer> _remotePlayers = new Dictionary<int, RemotePlayer>();
+        private readonly Dictionary<int, RemotePlayer> _remotePlayers = new Dictionary<int, RemotePlayer>();
 
         private KeyboardState _prevState;
         private KeyboardState _currentState;
@@ -44,6 +44,7 @@ namespace Client
 
             _networkManager = new NetworkManager();
             _networkManager.OnNewPlayerConnected += NewPlayerConnected;
+            _networkManager.OnPlayerDisconnected += PlayerDisconnected;
             _networkManager.Connect();
 
             _localPlayer = new LocalPlayer(this, _networkManager.LocalPlayerId);
@@ -78,9 +79,12 @@ namespace Client
 
             _localPlayer.Update(gameTime);
 
-            foreach (RemotePlayer remotePlayer in _remotePlayers.Values)
+            lock (_remotePlayers)
             {
-                remotePlayer.Update(gameTime);
+                foreach (RemotePlayer remotePlayer in _remotePlayers.Values)
+                {
+                    remotePlayer.Update(gameTime);
+                }
             }
 
             base.Update(gameTime);
@@ -111,6 +115,14 @@ namespace Client
             lock (_remotePlayers)
             {
                 _remotePlayers.Add(newPlayer.PlayerId, newPlayer);
+            }
+        }
+
+        private void PlayerDisconnected(int id)
+        {
+            lock (_remotePlayers)
+            {
+                _remotePlayers.Remove(id);
             }
         }
     }
