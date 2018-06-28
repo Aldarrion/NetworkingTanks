@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Protobufs.NetworkTanks.Game;
 using ProtoBuf;
 using Lidgren.Network;
+using NetworkingTanks.Utils;
 
 namespace Server
 {
@@ -31,7 +32,7 @@ namespace Server
 
         private Queue<MoveMessage> _commands = new Queue<MoveMessage>();
 
-        private Random _rnd = new Random(42);
+        private readonly Random _rnd = new Random(42);
 
         public void Run()
         {
@@ -177,10 +178,7 @@ namespace Server
                             break;
                         }
                         case NetIncomingMessageType.Data:
-                            Console.WriteLine($"  Received data message");
-                            int size = msg.ReadInt32();
-                            byte[] protoMsg = msg.ReadBytes(size);
-
+                            HandleDataMessage(msg);
                             break;
                         case NetIncomingMessageType.Receipt:
                             break;
@@ -244,6 +242,52 @@ namespace Server
                         );
                     }
                 }
+            }
+        }
+
+        private void HandleDataMessage(NetIncomingMessage msg)
+        {
+            Console.WriteLine($"  Received data message");
+            int size = msg.ReadInt32();
+            byte[] protoMsg = msg.ReadBytes(size);
+            WrapperMessage wrapperMsg = WrapperMessage.Parser.ParseFrom(protoMsg);
+
+            switch (wrapperMsg.MessageCase)
+            {
+                case WrapperMessage.MessageOneofCase.MoveMessage:
+                {
+                    MoveMessage moveMsg = wrapperMsg.MoveMessage;
+                    lock (_clients)
+                    {
+                        if (_players.TryGetValue(moveMsg.PlayerId, out PlayerInfo playerInfo))
+                        {
+                            playerInfo.Position = moveMsg.Position;
+
+                            List<NetConnection> otherPlayers = _clients
+                                .Where(x => x.Value != moveMsg.PlayerId)
+                                .Select(x => x.Key)
+                                .ToList();
+
+                            if (otherPlayers.Count > 0)
+                            {
+                                NetOutgoingMessage outMsg = wrapperMsg.ToNetOutMsg(_server);
+                                _server.SendMessage(
+                                    outMsg,
+                                    otherPlayers,
+                                    NetDeliveryMethod.UnreliableSequenced,
+                                    DEFAULT_SEQUENCE_CHANNEL
+                                );
+                            }
+                        }
+                    }
+                    break;
+                }
+                case WrapperMessage.MessageOneofCase.None:
+                case WrapperMessage.MessageOneofCase.PlayerSpawnMessage:
+                case WrapperMessage.MessageOneofCase.NewPlayerMessage:
+                case WrapperMessage.MessageOneofCase.PlayerDisconnectMessage:
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(wrapperMsg.MessageCase));
             }
         }
 

@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using Client.Entities;
 using Client.Extensions;
 using Client.Managers;
@@ -23,7 +24,7 @@ namespace Client
         private KeyboardState _prevState;
         private KeyboardState _currentState;
 
-        private NetworkManager _networkManager;
+        internal NetworkManager NetworkManager { get; private set; }
 
         public bool IsKeyDownNew(Keys key)
         {
@@ -42,13 +43,14 @@ namespace Client
             _prevState = Keyboard.GetState();
             _currentState = Keyboard.GetState();
 
-            _networkManager = new NetworkManager();
-            _networkManager.OnNewPlayerConnected += NewPlayerConnected;
-            _networkManager.OnPlayerDisconnected += PlayerDisconnected;
-            _networkManager.Connect();
+            NetworkManager = new NetworkManager();
+            NetworkManager.OnNewPlayerConnected += NewPlayerConnected;
+            NetworkManager.OnPlayerDisconnected += PlayerDisconnected;
+            NetworkManager.OnPlayerMove += PlayerMove;
+            NetworkManager.Connect();
 
-            _localPlayer = new LocalPlayer(this, _networkManager.LocalPlayerId);
-            _localPlayer.MoveTo(_networkManager.LocalPlayerPosition);
+            _localPlayer = new LocalPlayer(this, NetworkManager.LocalPlayerId);
+            _localPlayer.MoveTo(NetworkManager.LocalPlayerPosition);
 
             base.Initialize();
         }
@@ -73,7 +75,7 @@ namespace Client
             if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed ||
                 Keyboard.GetState().IsKeyDown(Keys.Escape))
             {
-                _networkManager.Destroy();
+                NetworkManager.Destroy();
                 Exit();
             }
 
@@ -115,6 +117,21 @@ namespace Client
             lock (_remotePlayers)
             {
                 _remotePlayers.Add(newPlayer.PlayerId, newPlayer);
+            }
+        }
+
+        private void PlayerMove(int id, Vector2 position)
+        {
+            lock (_remotePlayers)
+            {
+                if (_remotePlayers.TryGetValue(id, out RemotePlayer player))
+                {
+                    player.MoveTo(position);
+                }
+                else
+                {
+                    Console.WriteLine($"Move: Player {id} not found.");
+                }
             }
         }
 

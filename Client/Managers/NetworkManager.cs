@@ -3,6 +3,7 @@ using System.Threading;
 using Client.Extensions;
 using Lidgren.Network;
 using Microsoft.Xna.Framework;
+using NetworkingTanks.Utils;
 using Protobufs.NetworkTanks.Game;
 
 namespace Client.Managers
@@ -20,6 +21,7 @@ namespace Client.Managers
 
         public event Action<PlayerInfo> OnNewPlayerConnected;
         public event Action<int> OnPlayerDisconnected;
+        public event Action<int, Vector2> OnPlayerMove;
 
         public NetworkManager()
         {
@@ -141,15 +143,9 @@ namespace Client.Managers
                 case WrapperMessage.MessageOneofCase.None:
                     break;
                 case WrapperMessage.MessageOneofCase.MoveMessage:
-                {
                     MoveMessage move = wrapperMessage.MoveMessage;
-                    lock (this)
-                    {
-                        //_position = new Vector2(move.Position.X, move.Position.Y);
-                    }
-
+                    OnPlayerMove?.Invoke(move.PlayerId, move.Position.ToVector());
                     break;
-                }
                 case WrapperMessage.MessageOneofCase.PlayerSpawnMessage:
                     break;
                 case WrapperMessage.MessageOneofCase.NewPlayerMessage:
@@ -161,6 +157,19 @@ namespace Client.Managers
                 default:
                     throw new ArgumentOutOfRangeException(nameof(wrapperMessage.MessageCase));
             }
+        }
+
+        public void SendPlayerMove(int id, Vector2 position)
+        {
+            var moveMsg = new MoveMessage
+            {
+                PlayerId = id,
+                Position = position.ToPosition()
+            };
+            var wrapperMsg = new WrapperMessage {MoveMessage = moveMsg};
+
+            NetOutgoingMessage outMsg = wrapperMsg.ToNetOutMsg(_client);
+            _client.SendMessage(outMsg, NetDeliveryMethod.UnreliableSequenced);
         }
 
         public void Destroy()

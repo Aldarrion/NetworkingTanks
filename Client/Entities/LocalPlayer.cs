@@ -6,6 +6,8 @@ namespace Client.Entities
 {
     public class LocalPlayer : Player
     {
+        private Vector2? _lastPosition;
+
         public LocalPlayer(TanksGame game, int playerId)
             : base(game, playerId)
         {
@@ -40,19 +42,12 @@ namespace Client.Entities
         {
             HandleInput(time);
 
-            if (Game.IsKeyDownNew(Keys.E))
+            if (_lastPosition.HasValue && _position != _lastPosition.Value)
             {
-                _position.X += Speed * (float)time.ElapsedGameTime.TotalSeconds;
-                var moveMessage = new MoveMessage
-                {
-                    PlayerId = 1,
-                    Position = new Position {X = 123, Y = 42 }
-                };
-                var wm = new WrapperMessage
-                {
-                    MoveMessage = moveMessage
-                };
+                Game.NetworkManager.SendPlayerMove(PlayerId, _position);
             }
+
+            _lastPosition = _position;
         }
     }
 }
