@@ -8,6 +8,7 @@ message WrapperMessage {
         PlayerSpawnMessage playerSpawnMessage = 2;
         NewPlayerMessage newPlayerMessage = 3;
         PlayerDisconnectMessage playerDisconnectMessage = 4;
+        SnapshotMessage snapshotMessage = 5;
     }
 }
 
@@ -19,6 +20,11 @@ message Position {
 message PlayerInfo {
     int32 id = 1;
     Position position = 2;
+}
+
+message SnapshotMessage {
+    int32 tickNumber = 1;
+    repeated PlayerInfo otherPlayers = 2;
 }
 
 message MoveMessage {

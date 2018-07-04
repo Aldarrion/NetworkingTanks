@@ -44,9 +44,9 @@ namespace Client
             _currentState = Keyboard.GetState();
 
             NetworkManager = new NetworkManager();
-            NetworkManager.OnNewPlayerConnected += NewPlayerConnected;
-            NetworkManager.OnPlayerDisconnected += PlayerDisconnected;
-            NetworkManager.OnPlayerMove += PlayerMove;
+            NetworkManager.OnNewPlayerConnected += HandleNewPlayerConnected;
+            NetworkManager.OnPlayerDisconnected += HandlePlayerDisconnected;
+            NetworkManager.OnServerTick += HandleServerTick;
             NetworkManager.Connect();
 
             _localPlayer = new LocalPlayer(this, NetworkManager.LocalPlayerId);
@@ -108,7 +108,9 @@ namespace Client
             base.Draw(gameTime);
         }
 
-        private void NewPlayerConnected(PlayerInfo newPlayerInfo)
+
+        #region Networking
+        private void HandleNewPlayerConnected(PlayerInfo newPlayerInfo)
         {
             var newPlayer = new RemotePlayer(this, newPlayerInfo.Id);
             newPlayer.LoadContent(GraphicsDevice);
@@ -120,27 +122,36 @@ namespace Client
             }
         }
 
-        private void PlayerMove(int id, Vector2 position)
-        {
-            lock (_remotePlayers)
-            {
-                if (_remotePlayers.TryGetValue(id, out RemotePlayer player))
-                {
-                    player.MoveTo(position);
-                }
-                else
-                {
-                    Console.WriteLine($"Move: Player {id} not found.");
-                }
-            }
-        }
-
-        private void PlayerDisconnected(int id)
+        private void HandlePlayerDisconnected(int id)
         {
             lock (_remotePlayers)
             {
                 _remotePlayers.Remove(id);
             }
         }
+
+        private void HandleServerTick(SnapshotMessage message)
+        {
+            lock (_remotePlayers)
+            {
+                foreach (PlayerInfo otherPlayer in message.OtherPlayers)
+                {
+                    MovePlayer(otherPlayer.Id, otherPlayer.Position.ToVector());
+                }
+            }
+        }
+
+        private void MovePlayer(int id, Vector2 position)
+        {
+            if (_remotePlayers.TryGetValue(id, out RemotePlayer player))
+            {
+                player.MoveTo(position);
+            }
+            else
+            {
+                Console.WriteLine($"Move: Player {id} not found.");
+            }
+        }
+        #endregion
     }
 }

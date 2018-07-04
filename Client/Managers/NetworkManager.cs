@@ -21,7 +21,7 @@ namespace Client.Managers
 
         public event Action<PlayerInfo> OnNewPlayerConnected;
         public event Action<int> OnPlayerDisconnected;
-        public event Action<int, Vector2> OnPlayerMove;
+        public event Action<SnapshotMessage> OnServerTick;
 
         public NetworkManager()
         {
@@ -37,11 +37,6 @@ namespace Client.Managers
             _client.Connect(SERVER_HOST, SERVER_PORT);
             Console.WriteLine("Client created");
 
-            EsablishInfo();
-        }
-
-        private void EsablishInfo()
-        {
             while (true)
             {
                 NetIncomingMessage msg;
@@ -74,7 +69,7 @@ namespace Client.Managers
                             LocalPlayerId = newPlayer.Id;
                             LocalPlayerPosition = newPlayer.Position.ToVector();
                             Console.WriteLine($"  Received id: {LocalPlayerId} and position: {LocalPlayerPosition} from server");
-                            
+
                             _client.RegisterReceivedCallback(ReceiveMessage);
 
                             foreach (PlayerInfo otherPlayer in playerSpawnMsg.OtherPlayers)
@@ -142,17 +137,14 @@ namespace Client.Managers
             {
                 case WrapperMessage.MessageOneofCase.None:
                     break;
-                case WrapperMessage.MessageOneofCase.MoveMessage:
-                    MoveMessage move = wrapperMessage.MoveMessage;
-                    OnPlayerMove?.Invoke(move.PlayerId, move.Position.ToVector());
-                    break;
-                case WrapperMessage.MessageOneofCase.PlayerSpawnMessage:
-                    break;
                 case WrapperMessage.MessageOneofCase.NewPlayerMessage:
                     OnNewPlayerConnected?.Invoke(wrapperMessage.NewPlayerMessage.PlayerInfo);
                     break;
                 case WrapperMessage.MessageOneofCase.PlayerDisconnectMessage:
                     OnPlayerDisconnected?.Invoke(wrapperMessage.PlayerDisconnectMessage.Id);
+                    break;
+                case WrapperMessage.MessageOneofCase.SnapshotMessage:
+                    OnServerTick?.Invoke(wrapperMessage.SnapshotMessage);
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(wrapperMessage.MessageCase));
