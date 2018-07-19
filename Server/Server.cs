@@ -29,7 +29,7 @@ namespace Server
 
         private int _playerId;
 
-        private static readonly float TICK_RATE_PER_SECOND = 1f;
+        private static readonly float TICK_RATE_PER_SECOND = 30f;
         private static readonly float TICK_DURATION_SECONDS = 1f / TICK_RATE_PER_SECOND;
         private static readonly TimeSpan TICK_DURATION = TimeSpan.FromSeconds(TICK_DURATION_SECONDS);
 
@@ -175,6 +175,10 @@ namespace Server
                     {
                         PlayerDisconencted(msg);
                     }
+                    else if (msg.SenderConnection.Status == NetConnectionStatus.RespondedConnect)
+                    {
+                        PlayerConnected(msg);
+                    }
                     break;
                 }
                 case NetIncomingMessageType.UnconnectedData:
@@ -188,7 +192,12 @@ namespace Server
                     var playerSpawnMsg = new PlayerSpawnMessage
                     {
                         NewPlayer = newPlayerInfo,
-                        OtherPlayers = { _players.Values }
+                        // TODO send other players' info in PlayerConnected - when connection is fully established and communication is possible
+                        OtherPlayers = { _players.Values },
+                        ServerSettings = new ServerSettings
+                        {
+                            TickDurationSeconds = TICK_DURATION_SECONDS
+                        }
                     };
                     var wrapper = new WrapperMessage { PlayerSpawnMessage = playerSpawnMsg };
                     NetOutgoingMessage playerInfoMsg = _server.CreateMessage();
@@ -197,29 +206,6 @@ namespace Server
                     msg.SenderConnection.Approve(playerInfoMsg);
 
                     Console.WriteLine($"  Added player with ID: {newPlayerId}");
-
-                    // Send info about new player to other players
-                    lock (_clients)
-                    {
-                        if (_clients.Count > 0)
-                        {
-                            var newPlayerMsg = new NewPlayerMessage
-                            {
-                                PlayerInfo = new PlayerInfo { Id = newPlayerId, Position = newPlayerPosition }
-                            };
-                            var clientWrapper = new WrapperMessage { NewPlayerMessage = newPlayerMsg };
-                            NetOutgoingMessage clientMsg = _server.CreateMessage();
-                            clientMsg.Write(clientWrapper.CalculateSize());
-                            clientMsg.Write(Protobufs.Utils.GetBinaryData(clientWrapper));
-
-                            _server.SendMessage(
-                                clientMsg,
-                                _clients.Keys.ToList(),
-                                NetDeliveryMethod.ReliableOrdered,
-                                DEFAULT_SEQUENCE_CHANNEL
-                            );
-                        }
-                    }
 
                     // Add new player to database
                     lock (_clients)
@@ -271,6 +257,41 @@ namespace Server
                             NetDeliveryMethod.ReliableOrdered,
                             DEFAULT_SEQUENCE_CHANNEL
                         );
+                    }
+                }
+            }
+        }
+
+        private void PlayerConnected(NetIncomingMessage msg)
+        {
+            // Send info about new player to other players
+            lock (_clients)
+            {
+                if (_clients.TryGetValue(msg.SenderConnection, out int id))
+                {
+                    var otherClients = _clients
+                        .Where(x => x.Key != msg.SenderConnection)
+                        .Select(x => x.Key)
+                        .ToList();
+                    if (otherClients.Count > 0)
+                    {
+                        Console.WriteLine($"  OtherStatus: {otherClients[0].Status}");
+                        var newPlayerMsg = new NewPlayerMessage
+                        {
+                            PlayerInfo = new PlayerInfo {Id = id, Position = _players[id].Position}
+                        };
+                        var clientWrapper = new WrapperMessage {NewPlayerMessage = newPlayerMsg};
+                        NetOutgoingMessage clientMsg = _server.CreateMessage();
+                        clientMsg.Write(clientWrapper.CalculateSize());
+                        clientMsg.Write(Protobufs.Utils.GetBinaryData(clientWrapper));
+
+                        _server.SendMessage(
+                            clientMsg,
+                            otherClients,
+                            NetDeliveryMethod.ReliableOrdered,
+                            DEFAULT_SEQUENCE_CHANNEL
+                        );
+                        Console.WriteLine("  Info to other players sent!");
                     }
                 }
             }

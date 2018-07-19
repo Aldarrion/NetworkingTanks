@@ -10,11 +10,13 @@ namespace Client.Managers
 {
     internal class NetworkManager
     {
+        public float TICK_DURATION_SECONDS { get; private set; }
+
         private static readonly string SERVER_HOST = "127.0.0.1";
         private static readonly int SERVER_PORT = 14241;
         private static readonly string CONNECTION_NAME = "TanksNetworking";
 
-        private NetClient _client;
+        private readonly NetClient _client;
 
         public int LocalPlayerId { get; private set; }
         public Vector2 LocalPlayerPosition { get; private set; }
@@ -65,6 +67,7 @@ namespace Client.Managers
 
                             PlayerSpawnMessage playerSpawnMsg = wrapper.PlayerSpawnMessage;
                             PlayerInfo newPlayer = playerSpawnMsg.NewPlayer;
+                            TICK_DURATION_SECONDS = playerSpawnMsg.ServerSettings.TickDurationSeconds;
 
                             LocalPlayerId = newPlayer.Id;
                             LocalPlayerPosition = newPlayer.Position.ToVector();

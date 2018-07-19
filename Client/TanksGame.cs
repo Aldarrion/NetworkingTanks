@@ -136,8 +136,21 @@ namespace Client
             {
                 foreach (PlayerInfo otherPlayer in message.OtherPlayers)
                 {
-                    MovePlayer(otherPlayer.Id, otherPlayer.Position.ToVector());
+                    SetNextPlayerPos(otherPlayer.Id, otherPlayer.Position.ToVector());
                 }
+            }
+        }
+
+        private void SetNextPlayerPos(int id, Vector2 position)
+        {
+            if (_remotePlayers.TryGetValue(id, out RemotePlayer player))
+            {
+                player.NextPosition = position;
+                player.InterpTime = NetworkManager.TICK_DURATION_SECONDS;
+            }
+            else
+            {
+                Console.WriteLine($"Move: Player {id} not found.");
             }
         }
 

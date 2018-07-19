@@ -12,6 +12,10 @@ message WrapperMessage {
     }
 }
 
+message ServerSettings {
+    float tickDurationSeconds = 1;
+}
+
 message Position {
     float x = 1;
     float y = 2;
@@ -35,6 +39,7 @@ message MoveMessage {
 message PlayerSpawnMessage {
     PlayerInfo newPlayer = 1;
     repeated PlayerInfo otherPlayers = 2;
+    ServerSettings serverSettings = 3;
 }
 
 message NewPlayerMessage {

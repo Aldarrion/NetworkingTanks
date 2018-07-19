@@ -10,9 +10,6 @@ namespace Client.Entities
 {
     public abstract class Player : Entity
     {
-        protected readonly float _updateRate = 30;
-        protected readonly float _tickRate = 30;
-
         private Texture2D _square;
         public float Speed { get; }
         protected Vector2 _position;
@@ -43,12 +40,12 @@ namespace Client.Entities
             spriteBatch.Draw(_square, _position, Color.White);
         }
 
-        public void Move(Vector2 deltaPosition)
+        public virtual void Move(Vector2 deltaPosition)
         {
             _position += deltaPosition;
         }
 
-        public void MoveTo(Vector2 newPosition)
+        public virtual void MoveTo(Vector2 newPosition)
         {
             _position = newPosition;
         }
