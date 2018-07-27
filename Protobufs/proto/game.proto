@@ -40,6 +40,7 @@ message PlayerSpawnMessage {
     PlayerInfo newPlayer = 1;
     repeated PlayerInfo otherPlayers = 2;
     ServerSettings serverSettings = 3;
+    int32 lastTickNumber = 4;
 }
 
 message NewPlayerMessage {

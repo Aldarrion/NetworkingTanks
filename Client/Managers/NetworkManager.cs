@@ -10,7 +10,10 @@ namespace Client.Managers
 {
     internal class NetworkManager
     {
-        public float TICK_DURATION_SECONDS { get; private set; }
+        public float TickDurationSeconds { get; private set; }
+
+        public int LastTickNumber { get; private set; }
+        public int PreviousTickNumber { get; private set; }
 
         private static readonly string SERVER_HOST = "127.0.0.1";
         private static readonly int SERVER_PORT = 14241;
@@ -66,14 +69,18 @@ namespace Client.Managers
                             }
 
                             PlayerSpawnMessage playerSpawnMsg = wrapper.PlayerSpawnMessage;
+                            LastTickNumber = playerSpawnMsg.LastTickNumber;
+
                             PlayerInfo newPlayer = playerSpawnMsg.NewPlayer;
-                            TICK_DURATION_SECONDS = playerSpawnMsg.ServerSettings.TickDurationSeconds;
+                            TickDurationSeconds = playerSpawnMsg.ServerSettings.TickDurationSeconds;
 
                             LocalPlayerId = newPlayer.Id;
                             LocalPlayerPosition = newPlayer.Position.ToVector();
                             Console.WriteLine($"  Received id: {LocalPlayerId} and position: {LocalPlayerPosition} from server");
 
                             _client.RegisterReceivedCallback(ReceiveMessage);
+
+                            Console.WriteLine($"--- Last Tick: {LastTickNumber}");
 
                             foreach (PlayerInfo otherPlayer in playerSpawnMsg.OtherPlayers)
                             {
@@ -95,7 +102,7 @@ namespace Client.Managers
             var netClient = (NetClient) peer;
             NetIncomingMessage msg = netClient.ReadMessage();
 
-            Console.WriteLine($"Message received: {msg.MessageType}");
+            //Console.WriteLine($"Message received: {msg.MessageType}");
             switch (msg.MessageType)
             {
                 case NetIncomingMessageType.Error:
@@ -147,7 +154,14 @@ namespace Client.Managers
                     OnPlayerDisconnected?.Invoke(wrapperMessage.PlayerDisconnectMessage.Id);
                     break;
                 case WrapperMessage.MessageOneofCase.SnapshotMessage:
-                    OnServerTick?.Invoke(wrapperMessage.SnapshotMessage);
+                    var snapshotMessage = wrapperMessage.SnapshotMessage;
+                    if (snapshotMessage.TickNumber <= LastTickNumber)
+                    {
+                        Console.WriteLine("ERROR: Tick out of order received!");
+                    }
+                    PreviousTickNumber = LastTickNumber;
+                    LastTickNumber = snapshotMessage.TickNumber;
+                    OnServerTick?.Invoke(snapshotMessage);
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(wrapperMessage.MessageCase));

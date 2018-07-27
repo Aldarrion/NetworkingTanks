@@ -21,14 +21,14 @@ namespace Client
         private LocalPlayer _localPlayer;
         private readonly Dictionary<int, RemotePlayer> _remotePlayers = new Dictionary<int, RemotePlayer>();
 
-        private KeyboardState _prevState;
-        private KeyboardState _currentState;
+        private KeyboardState _previousKeyboardState;
+        private KeyboardState _currentKeyboardState;
 
         internal NetworkManager NetworkManager { get; private set; }
 
         public bool IsKeyDownNew(Keys key)
         {
-            return _prevState.IsKeyUp(key) && _currentState.IsKeyDown(key);
+            return _previousKeyboardState.IsKeyUp(key) && _currentKeyboardState.IsKeyDown(key);
         }
 
         public TanksGame()
@@ -40,8 +40,8 @@ namespace Client
 
         protected override void Initialize()
         {
-            _prevState = Keyboard.GetState();
-            _currentState = Keyboard.GetState();
+            _previousKeyboardState = Keyboard.GetState();
+            _currentKeyboardState = Keyboard.GetState();
 
             NetworkManager = new NetworkManager();
             NetworkManager.OnNewPlayerConnected += HandleNewPlayerConnected;
@@ -69,8 +69,8 @@ namespace Client
 
         protected override void Update(GameTime gameTime)
         {
-            _prevState = _currentState;
-            _currentState = Keyboard.GetState();
+            _previousKeyboardState = _currentKeyboardState;
+            _currentKeyboardState = Keyboard.GetState();
 
             if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed ||
                 Keyboard.GetState().IsKeyDown(Keys.Escape))
@@ -110,11 +110,21 @@ namespace Client
 
 
         #region Networking
+
+        private float LerpInterval
+            => 2 * NetworkManager.TickDurationSeconds;
+
         private void HandleNewPlayerConnected(PlayerInfo newPlayerInfo)
         {
             var newPlayer = new RemotePlayer(this, newPlayerInfo.Id);
             newPlayer.LoadContent(GraphicsDevice);
             newPlayer.MoveTo(newPlayerInfo.Position.ToVector());
+            newPlayer.Ticks.AddLast(new TickInfo
+            {
+                NextPosition = newPlayerInfo.Position.ToVector(),
+                InterpDuration = LerpInterval,
+                TickNumber = NetworkManager.LastTickNumber
+            });
 
             lock (_remotePlayers)
             {
@@ -136,17 +146,31 @@ namespace Client
             {
                 foreach (PlayerInfo otherPlayer in message.OtherPlayers)
                 {
-                    SetNextPlayerPos(otherPlayer.Id, otherPlayer.Position.ToVector());
+                    SetNextPlayerPos(otherPlayer.Id, otherPlayer.Position.ToVector(), message.TickNumber);
                 }
             }
         }
 
-        private void SetNextPlayerPos(int id, Vector2 position)
+        private void SetNextPlayerPos(int id, Vector2 position, int tickNumber)
         {
             if (_remotePlayers.TryGetValue(id, out RemotePlayer player))
             {
-                player.NextPosition = position;
-                player.InterpTime = NetworkManager.TICK_DURATION_SECONDS;
+                var tickInfo = new TickInfo
+                {
+                    NextPosition = position,
+                    InterpDuration = NetworkManager.TickDurationSeconds,
+                    TickNumber = tickNumber
+                };
+                lock (player.Ticks)
+                {
+                    if (player.Ticks.Last != null && player.Ticks.Last.Value.TickNumber >= tickNumber)
+                    {
+                        // More recent tick is already in queue
+                        return;
+                    }
+
+                    player.Ticks.AddLast(tickInfo);
+                }
             }
             else
             {

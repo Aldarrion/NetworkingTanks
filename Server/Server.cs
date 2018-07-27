@@ -114,10 +114,10 @@ namespace Server
                                 DEFAULT_SEQUENCE_CHANNEL
                             );
                         }
-
-                        ++_tickNumber;
                     }
                 }
+
+                Interlocked.Increment(ref _tickNumber);
 
                 TimeSpan elapsedTickDuration = DateTime.Now - _lastTickTime;
                 var sleepTime = (int) (TICK_DURATION - elapsedTickDuration).TotalMilliseconds;
@@ -127,7 +127,6 @@ namespace Server
                 while (DateTime.Now < nextTickTime)
                 {
                     // Active wait until next tick
-                    continue;
                 }
             }
         }
@@ -188,28 +187,30 @@ namespace Server
                     int newPlayerId = Interlocked.Increment(ref _playerId);
                     var newPlayerPosition = new Position { X = _rnd.Next(500), Y = _rnd.Next(500) };
                     var newPlayerInfo = new PlayerInfo { Id = newPlayerId, Position = newPlayerPosition };
-                    // Send player info
-                    var playerSpawnMsg = new PlayerSpawnMessage
-                    {
-                        NewPlayer = newPlayerInfo,
-                        // TODO send other players' info in PlayerConnected - when connection is fully established and communication is possible
-                        OtherPlayers = { _players.Values },
-                        ServerSettings = new ServerSettings
-                        {
-                            TickDurationSeconds = TICK_DURATION_SECONDS
-                        }
-                    };
-                    var wrapper = new WrapperMessage { PlayerSpawnMessage = playerSpawnMsg };
-                    NetOutgoingMessage playerInfoMsg = _server.CreateMessage();
-                    playerInfoMsg.Write(wrapper.CalculateSize());
-                    playerInfoMsg.Write(Protobufs.Utils.GetBinaryData(wrapper));
-                    msg.SenderConnection.Approve(playerInfoMsg);
-
-                    Console.WriteLine($"  Added player with ID: {newPlayerId}");
-
-                    // Add new player to database
                     lock (_clients)
                     {
+                        // Send player info
+                        var playerSpawnMsg = new PlayerSpawnMessage
+                        {
+                            NewPlayer = newPlayerInfo,
+                            // TODO send other players' info in PlayerConnected - when connection is fully established and communication is possible
+                            OtherPlayers = {_players.Values},
+                            ServerSettings = new ServerSettings
+                            {
+                                TickDurationSeconds = TICK_DURATION_SECONDS
+                            },
+                            LastTickNumber = _tickNumber
+                        };
+
+                        var wrapper = new WrapperMessage {PlayerSpawnMessage = playerSpawnMsg};
+                        NetOutgoingMessage playerInfoMsg = _server.CreateMessage();
+                        playerInfoMsg.Write(wrapper.CalculateSize());
+                        playerInfoMsg.Write(Protobufs.Utils.GetBinaryData(wrapper));
+                        msg.SenderConnection.Approve(playerInfoMsg);
+
+                        Console.WriteLine($"  Added player with ID: {newPlayerId}");
+
+                        // Add new player to database
                         _clients.Add(msg.SenderConnection, newPlayerId);
                         _players.Add(newPlayerId, newPlayerInfo);
                     }
