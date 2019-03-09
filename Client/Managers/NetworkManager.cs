@@ -158,6 +158,7 @@ namespace Client.Managers
                     if (snapshotMessage.TickNumber <= LastTickNumber)
                     {
                         Console.WriteLine("ERROR: Tick out of order received!");
+                        return;
                     }
                     PreviousTickNumber = LastTickNumber;
                     LastTickNumber = snapshotMessage.TickNumber;
